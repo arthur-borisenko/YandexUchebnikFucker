@@ -251,6 +251,19 @@ class Solver:
         self.load_data_if_necessary()
         return self.data["data"]["getCLessonRun"]["problems"]
 
+    def _send_marker_solution(self,sol, prid, fake_timedelta):
+        #'{"1":{"user_answer":{"1":2,"2":0}}}'
+        clr_id = self.data["data"]["getLatestCLessonResult"][
+            "id"]
+        spent_time_ep = f"https://education.yandex.ru/classroom/api/post-clesson-results-update-spent-time/{clr_id}/"
+        spent_time_json = {"link_id": prid,
+                           "time_delta": fake_timedelta,
+                           "id": "57f5cd7f-58ae-426a-994c-5b8bd613377e",
+                           "sk": self.data["config"]["sk"]}
+        resp = requests.post(spent_time_ep, json=spent_time_json,
+                             cookies=self.cookies)
+        url="https://education.yandex.ru/classroom/api/patch-clesson-results/"
+        data={"clessonId":259598965,"isEvaluable":None,"problemLinkId":659749340,"resultId":clr_id,"answered":True,"completed":True,"dateUpdated":"2026-04-22T04:29:03Z","answer":sol,"sk":self.data["config"]["sk"]}
     def submit_coding_solution(self, sol, prid, fake_timedelta=0):
         self.load_data_if_necessary()
         if len(self.cookies) == 0:
