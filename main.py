@@ -1,5 +1,6 @@
 import builtins
 import os, re
+import traceback
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
 
@@ -126,35 +127,28 @@ class Solver:
             return Status.COOKIES_PARSE_ERROR
 
     def _load_data(self):
-        v = 1
-        if os.path.exists(f"data_{self.aid}.json"):
-            v = input("Cached data. override(y/n): ").lower() == "y"
-        if v:
-            status = self._load_cookies()
-            if status != Status.OK:
-                return status
-            URL = f"https://education.yandex.ru/classroom/courses/{self.cid}/assignments/{self.aid}/run/1/"
-            request = requests.get(URL, cookies=self.cookies)
-            html = request.text
-            if "captcha" in html:
-                return Status.CAPTCHA_DETECTED
-            if request.status_code == 404:
-                return Status.ASSIGNMENT_NOT_FOUND
-            if request.status_code // 100 != 2:
-                print(
-                    f"ERROR: server returned {request.status_code} with message: {request.text}")
-                return Status.UNKNOWN_ERROR
-            if "window._data=" not in html:
-                return Status.UNKNOWN_ERROR
-            datatxt = html[html.find("window._data="):][
-                len("window._data="):]
-            datatxt = datatxt[:datatxt.find("</script>")]
-            print(datatxt,
-                  file=open(f"data_{self.aid}.json", "w",
-                            encoding="utf-8"))
-        else:
-            datatxt = open(f"data_{self.aid}.json", "r",
-                           encoding="utf-8").read()
+        status = self._load_cookies_if_necessary()
+        if status != Status.OK:
+            return status
+        URL = f"https://education.yandex.ru/classroom/courses/{self.cid}/assignments/{self.aid}/run/1/"
+        request = requests.get(URL, cookies=self.cookies)
+        html = request.text
+        if "captcha" in html:
+            return Status.CAPTCHA_DETECTED
+        if request.status_code == 404:
+            return Status.ASSIGNMENT_NOT_FOUND
+        if request.status_code // 100 != 2:
+            print(
+                f"ERROR: server returned {request.status_code} with message: {request.text}")
+            return Status.UNKNOWN_ERROR
+        if "window._data=" not in html:
+            return Status.UNKNOWN_ERROR
+        datatxt = html[html.find("window._data="):][
+            len("window._data="):]
+        datatxt = datatxt[:datatxt.find("</script>")]
+        print(datatxt,
+              file=open(f"data_{self.aid}.json", "w",
+                        encoding="utf-8"))
         try:
             self.data = json.loads(datatxt)
             return Status.OK
@@ -185,6 +179,10 @@ class Solver:
 
     def coding_solution(self, problem_idx):
         self.load_data_if_necessary()
+        if "getCLessonRun" not in self.data["data"]:
+            st=self.start_clesson()
+            if st!=Status.OK:
+                return st, None, None
         problems = self.data["data"]["getCLessonRun"]["problems"]
         problem_idx = int(problem_idx)
         if problem_idx > len(problems):
@@ -273,16 +271,17 @@ class Solver:
             return Status.PROBLEM_NOT_FOUND, None
         problem = problems[problem_idx - 1]["problem"]
         return Status.OK, problem["type"]
-
+    def send_marker_solution(self):
+        raise NotImplementedError
     def marker_solution(self, problem_idx):
         self.load_data_if_necessary()
         problems = self.data["data"]["getCLessonRun"]["problems"]
         problem_idx = int(problem_idx)
         if problem_idx > len(problems):
-            return Status.PROBLEM_NOT_FOUND, None, None
+            return Status.PROBLEM_NOT_FOUND, None
         problem = problems[problem_idx - 1]["problem"]
         if problem["type"] != "practice":
-            return Status.WRONG_PROBLEM_TYPE, None, None
+            return Status.WRONG_PROBLEM_TYPE, None
         answers = problem["markup"]["answers"]
         markers = []
         for el in problem["markup"]["layout"]:
@@ -303,11 +302,27 @@ class Solver:
             elif "choices" in mo:
                 readable_answers.append(mo["choices"][ans[0]])
             else:
-                return Status.WRONG_PROBLEM_TYPE, None, None
+                return Status.WRONG_PROBLEM_TYPE, None
         return Status.OK, readable_answers
+    def start_clesson(self):
+        url="https://education.yandex.ru/classroom/api/post-clesson-results/"
+        data={"clessonId": self.aid,
+         "sk": self.data["config"]["sk"]}
+        st=self._load_data()
+        if st!=Status.OK:
+            return st
+        r=requests.post(url, json=data, cookies=self.cookies)
+        if not r.ok:
+            return Status.UNKNOWN_ERROR
+        return Status.OK
+    def _load_cookies_if_necessary(self):
+        if self.cookies and len(self.cookies)>0:
+            return Status.OK
+        return self._load_cookies()
 
 
 def print_table(s):
+    print(s)
     if "|" not in s:
         print(s)
         return
@@ -397,7 +412,13 @@ def print_problem(s: Solver, i: int):
 
 def print_all_problems(s: Solver):
     for i, problem in enumerate(s.get_problems(), start=1):
-        print_problem(s, i)
+        try:
+            print_problem(s, i)
+        except Exception as e:
+            print(f"FAILED to loag task {i}:")
+            print(e)
+            traceback.print_exc()
+
 
 def load_ids():
     a=input("Enter course id OR link to assignment: ")
