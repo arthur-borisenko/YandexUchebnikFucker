@@ -14,8 +14,10 @@ except ImportError:
     import requests
 import json
 
+
 def input(prompt):
     return builtins.input(prompt).strip()
+
 
 class Status(Enum):
     OK = 0
@@ -25,13 +27,14 @@ class Status(Enum):
     ASSIGNMENT_NOT_FOUND = 4
     PROBLEM_NOT_FOUND = 5
     WRONG_PROBLEM_TYPE = 6
-    WRONG_INPUT=7
-    COOKIES_GENERATE_ERROR=8
+    WRONG_INPUT = 7
+    COOKIES_GENERATE_ERROR = 8
     UNKNOWN_ERROR = 9
 
 
 class Solver:
-    def __init__(self, cid, aid, cookies_path="cookies.txt", credentials=None):
+    def __init__(self, cid, aid, cookies_path="cookies.txt",
+                 credentials=None):
         self.cid = cid
         self.aid = aid
         self.data = None
@@ -41,19 +44,14 @@ class Solver:
         self.sch = None
         self.cookies_path = cookies_path
         if credentials:
-            self.use_creds=True
-            self.username=credentials["login"]
-            self.sch=credentials["code"]
+            self.use_creds = True
+            self.username = credentials["login"]
+            self.sch = credentials["code"]
         else:
             self.cookies_path = cookies_path
 
     def _login_with_creds(self):
-        """
-        Выполняет авторизацию и возвращает объект RequestsCookieJar.
-        """
         session = requests.Session()
-
-        # Стандартные заголовки для имитации живого человека
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -64,12 +62,11 @@ class Solver:
 
         try:
             response = session.get(
-                "https://education.yandex.ru/kids/",
-                headers=headers)
+                "https://education.yandex.ru/kids/", headers=headers)
             response.raise_for_status()
             sk_match = re.search(r'"sk":"(.*?)"', response.text)
             if not sk_match:
-                  sk = session.cookies.get('_csrf',
+                sk = session.cookies.get('_csrf',
                                          domain='.yandex.ru')
             else:
                 sk = sk_match.group(1)
@@ -84,23 +81,23 @@ class Solver:
                 'X-Requested-With': 'XMLHttpRequest'
             })
 
-            verify_url = "https://education.yandex.ru/classroom/api/post-verify-school-code/"
-            verify_payload = {"schoolCode": self.sch, "sk": sk}
-
-            v_res = session.post(verify_url, json=verify_payload,
-                                 headers=api_headers)
+            v_res = session.post(
+                "https://education.yandex.ru/classroom/api/post-verify-school-code/",
+                json={"schoolCode": self.sch, "sk": sk},
+                headers=api_headers)
             if v_res.status_code // 100 >= 4:
                 return Status.COOKIES_GENERATE_ERROR, None, v_res.text
 
-            login_url = "https://education.yandex.ru/classroom/api/post-submit-student-login/"
-            login_payload = {"studentLogin": self.username, "sk": sk}
-
-            l_res = session.post(login_url, json=login_payload,
-                                 headers=api_headers)
-            if l_res.status_code//100>=4:
+            l_res = session.post(
+                "https://education.yandex.ru/classroom/api/post-submit-student-login/",
+                json={"studentLogin": self.username, "sk": sk},
+                headers=api_headers)
+            if l_res.status_code // 100 >= 4:
                 return Status.COOKIES_GENERATE_ERROR, l_res.text
+
             if 'schoolbook-auth-token' in session.cookies:
-                self.cookies=requests.utils.dict_from_cookiejar(session.cookies)
+                self.cookies = requests.utils.dict_from_cookiejar(
+                    session.cookies)
                 return Status.OK, "OK"
             else:
                 return Status.COOKIES_GENERATE_ERROR, "Cookie not found"
@@ -110,7 +107,7 @@ class Solver:
 
     def _load_cookies(self):
         if self.use_creds:
-            status, msg=self._login_with_creds()
+            status, msg = self._login_with_creds()
             print(msg)
             return status
         if not os.path.exists(self.cookies_path):
@@ -118,8 +115,6 @@ class Solver:
         jar = MozillaCookieJar(self.cookies_path)
         try:
             jar.load()
-            print(
-                f"Loaded cookies: {requests.utils.dict_from_cookiejar(jar)} from {self.cookies_path}.")
             self.cookies = requests.utils.dict_from_cookiejar(jar)
             return Status.OK
         except Exception as e:
@@ -138,39 +133,19 @@ class Solver:
         if request.status_code == 404:
             return Status.ASSIGNMENT_NOT_FOUND
         if request.status_code // 100 != 2:
-            print(
-                f"ERROR: server returned {request.status_code} with message: {request.text}")
             return Status.UNKNOWN_ERROR
         if "window._data=" not in html:
             return Status.UNKNOWN_ERROR
+
         datatxt = html[html.find("window._data="):][
             len("window._data="):]
         datatxt = datatxt[:datatxt.find("</script>")]
-        print(datatxt,
-              file=open(f"data_{self.aid}.json", "w",
-                        encoding="utf-8"))
         try:
             self.data = json.loads(datatxt)
             return Status.OK
         except Exception as e:
             print(f"Error parsing JSON: {e}")
             return Status.UNKNOWN_ERROR
-
-    """    cid=input("Enter course ID or blank to default: ")
-        cid = cid if cid else "14848489"
-        aid = input("Enter assignment ID: ")
-            if problem_idx == "*":
-            for i, problem1 in enumerate(problems, start=1):
-                problem = problem1["problem"]
-                print(f"{'-' * 25}Problem {i}{'-' * 25}")
-                if problem["type"] != "coding":
-                    print(f"Not a coding problem.")
-                    continue
-                print(problem["markup"]["languages"][0]["author_solution"])
-            exit(0)
-                problem_idx = input("Enter problem number or * to show all: ")
-                    if not has_cookies:
-            cookies = load_cookies()"""
 
     def load_data_if_necessary(self):
         if self.data is None or len(self.data) == 0:
@@ -180,8 +155,8 @@ class Solver:
     def coding_solution(self, problem_idx):
         self.load_data_if_necessary()
         if "getCLessonRun" not in self.data["data"]:
-            st=self.start_clesson()
-            if st!=Status.OK:
+            st = self.start_clesson()
+            if st != Status.OK:
                 return st, None, None
         problems = self.data["data"]["getCLessonRun"]["problems"]
         problem_idx = int(problem_idx)
@@ -199,179 +174,238 @@ class Solver:
             "attempt": {
                 "answered": True,
                 "completed": True,
-                "markers": {
-                    "user_answer": {
-                        "code": solution,
-                        "language": "python"
-                    }
-                }
+                "markers": {"user_answer": {"code": solution,
+                                            "language": "python"}}
             },
             "clr_id": self.data["data"]["getLatestCLessonResult"][
                 "id"],
             "lpl_id": lpl_id,
             "sk": self.data["config"]["sk"]
         }
-        print("Forged request:")
-        print(data)
-        print("Sending...")
         resp = requests.post(
             "https://education.yandex.ru/classroom/api/v2/post-attempts/",
             json=data, cookies=self.cookies)
-        print("Response status:", resp.status_code)
         if resp.status_code // 100 != 2:
-            print(
-                f"Error: server responded with status {resp.status_code} and {resp.text}")
             return Status.UNKNOWN_ERROR
         return Status.OK
+
     def get_name(self):
-        st=self.load_data_if_necessary()
-        if st!=Status.OK:
-            return st, "ERROR"
+        st = self.load_data_if_necessary()
+        if st != Status.OK: return st, "ERROR"
         try:
-            return Status.OK,self.data["data"]["getMe"]["public_name"]
-        except Exception as e:
+            return Status.OK, self.data["data"]["getMe"][
+                "public_name"]
+        except:
             return Status.UNKNOWN_ERROR, "ERROR"
+
     def _pre_send_coding_solution(self, lpl_id, fake_timedelta=0):
-        clr_id = self.data["data"]["getLatestCLessonResult"][
-            "id"]
-        spent_time_ep = f"https://education.yandex.ru/classroom/api/post-clesson-results-update-spent-time/{clr_id}/"
+        clr_id = self.data["data"]["getLatestCLessonResult"]["id"]
         spent_time_json = {"link_id": lpl_id,
                            "time_delta": fake_timedelta,
-                           "id": "57f5cd7f-58ae-426a-994c-5b8bd613377e",
                            "sk": self.data["config"]["sk"]}
-        resp = requests.post(spent_time_ep, json=spent_time_json,
-                             cookies=self.cookies)
-        if resp.status_code // 100 != 2:
-            print(
-                f"Error: server responded with status {resp.status_code} and {resp.text}")
-            return Status.UNKNOWN_ERROR
-        return Status.OK
+        resp = requests.post(
+            f"https://education.yandex.ru/classroom/api/post-clesson-results-update-spent-time/{clr_id}/",
+            json=spent_time_json, cookies=self.cookies)
+        return Status.OK if resp.status_code // 100 == 2 else Status.UNKNOWN_ERROR
 
     def get_problems(self):
         self.load_data_if_necessary()
         return self.data["data"]["getCLessonRun"]["problems"]
 
-    def _send_marker_solution(self,sol, prid, fake_timedelta):
-        #'{"1":{"user_answer":{"1":2,"2":0}}}'
-        clr_id = self.data["data"]["getLatestCLessonResult"][
-            "id"]
-        spent_time_ep = f"https://education.yandex.ru/classroom/api/post-clesson-results-update-spent-time/{clr_id}/"
-        spent_time_json = {"link_id": prid,
-                           "time_delta": fake_timedelta,
-                           "id": "57f5cd7f-58ae-426a-994c-5b8bd613377e",
-                           "sk": self.data["config"]["sk"]}
-        resp = requests.post(spent_time_ep, json=spent_time_json,
-                             cookies=self.cookies)
-        url="https://education.yandex.ru/classroom/api/patch-clesson-results/"
-        data={"clessonId":259598965,"isEvaluable":None,"problemLinkId":659749340,"resultId":clr_id,"answered":True,"completed":True,"dateUpdated":"2026-04-22T04:29:03Z","answer":sol,"sk":self.data["config"]["sk"]}
     def submit_coding_solution(self, sol, prid, fake_timedelta=0):
         self.load_data_if_necessary()
-        if len(self.cookies) == 0:
-            status = self._load_cookies()
-            if status != Status.OK:
-                return status
-        status = self._pre_send_coding_solution(prid, fake_timedelta)
-        if status != Status.OK:
-            return status
-        status = self._send_coding_solution(prid, sol)
-        return status
+        self._pre_send_coding_solution(prid, fake_timedelta)
+        return self._send_coding_solution(prid, sol)
 
     def get_problem_type(self, problem_idx):
         self.load_data_if_necessary()
         problems = self.data["data"]["getCLessonRun"]["problems"]
-        problem_idx = int(problem_idx)
-        if problem_idx > len(problems):
-            return Status.PROBLEM_NOT_FOUND, None
-        problem = problems[problem_idx - 1]["problem"]
-        return Status.OK, problem["type"]
-    def send_marker_solution(self):
-        raise NotImplementedError
-    def marker_solution(self, problem_idx):
-        self.load_data_if_necessary()
-        problems = self.data["data"]["getCLessonRun"]["problems"]
-        problem_idx = int(problem_idx)
-        if problem_idx > len(problems):
-            return Status.PROBLEM_NOT_FOUND, None
-        problem = problems[problem_idx - 1]["problem"]
-        if problem["type"] != "practice":
-            return Status.WRONG_PROBLEM_TYPE, None
-        answers = problem["markup"]["answers"]
-        markers = []
+        if int(problem_idx) > len(
+            problems): return Status.PROBLEM_NOT_FOUND, None
+        return Status.OK, problems[int(problem_idx) - 1]["problem"][
+            "type"]
+
+    def _check_marker_solution(self, resp_json, prid):
+        answer_obj = resp_json["answers"][str(prid)][-1]
+        mist = [k for k, v in answer_obj["markers"].items() if
+                v["mistakes"] > 0]
+        return len(mist) > 0, mist
+
+    def _send_marker_solution(self, sol, prid):
+        clr_id = self.data["data"]["getLatestCLessonResult"]["id"]
+        data = {
+            "clessonId": self.cid, "problemLinkId": prid,
+            "resultId": clr_id,
+            "answered": True, "completed": True,
+            "answer": json.dumps(sol),
+            "sk": self.data["config"]["sk"]
+        }
+        resp = requests.post(
+            "https://education.yandex.ru/classroom/api/patch-clesson-results/",
+            cookies=self.cookies, json=data)
+        if resp.status_code // 100 != 2: print(f"status code: {resp.status_code}, data: {resp.text}");return Status.UNKNOWN_ERROR, False
+        return Status.OK, self._check_marker_solution(resp.json(),
+                                                      prid)
+
+    def _prepare_marker_solution(self, answers, problem):
+        # 1. Собираем маппинг ID маркера -> Тип маркера
+        marker_types = {}
         for el in problem["markup"]["layout"]:
             if el["kind"] == "marker":
-                markers.append(el)
-        readable_answers = []
-        for marker in markers:
-            i = marker["content"]["id"]
-            ans = answers[str(i)]
-            mo = marker["content"]["options"]
-            if "text" in mo:
-                dt=mo["text"]
-                input_ids = re.findall(r"\{input:[1-9]\d*}", dt)
-                ad = list(
-                    map(lambda x, _ans=ans: _ans[x[7:-1]], input_ids))
-                template = re.sub(r'\{input:[1-9]\d*}', '{}', dt)
-                readable_answers.append(template.format(*ad))
-            elif "choices" in mo:
-                readable_answers.append(mo["choices"][ans[0]])
+                marker_types[str(el["content"]["id"])] = \
+                el["content"]["type"]
+
+        res = {}
+        for mid, ans_data in answers.items():
+            m_type = marker_types.get(str(mid))
+            if m_type == "inline":
+                inner_payload = {}
+                for inp_id, val in ans_data.items():
+                    inner_payload[str(inp_id)] = val[
+                        0] if isinstance(val, list) else val
+                res[str(mid)] = {"user_answer": inner_payload}
             else:
-                return Status.WRONG_PROBLEM_TYPE, None
+                res[str(mid)] = ans_data
+        return res
+
+    def _pre_send_marker_solution(self, lpl_id, fake_timedelta=0):
+        return self._pre_send_coding_solution(lpl_id, fake_timedelta)
+
+    def send_marker_solution(self, problem_idx, fake_timedelta=0):
+        status, problem, answers, prid = self._marker_solution(
+            problem_idx)
+        if status != Status.OK: return status
+        prepared = self._prepare_marker_solution(answers, problem)
+        self._pre_send_marker_solution(prid, fake_timedelta)
+        return self._send_marker_solution(prepared, prid)
+
+    def _marker_solution(self, problem_idx):
+        self.load_data_if_necessary()
+        problems = self.data["data"]["getCLessonRun"]["problems"]
+        idx = int(problem_idx) - 1
+        if idx >= len(
+            problems): return Status.PROBLEM_NOT_FOUND, None, None, None
+        problem = problems[idx]["problem"]
+        if problem[
+            "type"] != "practice": return Status.WRONG_PROBLEM_TYPE, None, None, None
+        return Status.OK, problem, problem["markup"]["answers"], \
+        problems[idx]["id"]
+
+    def marker_solution(self, problem_idx):
+        status, problem, answers, prid = self._marker_solution(
+            problem_idx)
+        if status != Status.OK: return status, None
+
+        def clean_markup(text):
+            # Очистка текста от тегов типа {sizedText:small}
+            return re.sub(
+                r'\\?\{sizedText:.*?\}|\\?\{\\\\sizedText\}', '',
+                str(text))
+
+        if input(
+                f"Submit solution for {problem_idx}? (y/n): ").lower() in {
+            "y", "yes", "1", "д", "да"}:
+            print("Response:",
+                  self.send_marker_solution(problem_idx, 60))
+
+        readable_answers = []
+        for el in problem["markup"]["layout"]:
+            if el["kind"] == "marker":
+                mid = str(el["content"]["id"])
+                ans = answers.get(mid)
+                if ans is None: continue
+
+                mo = el["content"]["options"]
+                mt = el["content"]["type"]
+
+                if mt == "inline":
+                    text_template = mo["text"]
+                    # Находим все вхождения {input:N}
+                    input_tags = re.findall(r"\{input:([1-9]\d*)\}",
+                                            text_template)
+                    input_configs = mo.get("inputs", {})
+
+                    vals = []
+                    for tid in input_tags:
+                        v = ans.get(tid)
+                        conf = input_configs.get(tid, {})
+                        itype = conf.get("type")
+                        if itype == "choice":
+                            choices = conf["options"]["choices"]
+                            vals.append(clean_markup(
+                                choices[v] if isinstance(v,
+                                                         int) else v))
+                        elif itype == "field":
+                            # Для field значение лежит в списке [ "текст" ]
+                            vals.append(clean_markup(
+                                v[0] if isinstance(v, list) else v))
+                        else:
+                            vals.append(clean_markup(v))
+
+                    # Формируем читаемую строку
+                    clean_template = re.sub(r'\{input:[1-9]\d*\}',
+                                            '{}', clean_markup(
+                            text_template))
+                    readable_answers.append(
+                        clean_template.format(*vals))
+
+                elif mt == "choice":
+                    choices = mo["choices"]
+                    selected = [clean_markup(choices[i]) for i in
+                                ans]
+                    readable_answers.append(" / ".join(selected))
+
+                elif mt == "chooseimage":
+                    readable_answers.append(
+                        f"Выбранные зоны (ID): {', '.join(map(str,ans))}")
+
+                else:
+                    readable_answers.append(f"[{mt}] RAW: {ans}")
+
         return Status.OK, readable_answers
+
     def start_clesson(self):
-        url="https://education.yandex.ru/classroom/api/post-clesson-results/"
-        data={"clessonId": self.aid,
-         "sk": self.data["config"]["sk"]}
-        st=self._load_data()
-        if st!=Status.OK:
-            return st
-        r=requests.post(url, json=data, cookies=self.cookies)
-        if not r.ok:
-            return Status.UNKNOWN_ERROR
-        return Status.OK
+        url = "https://education.yandex.ru/classroom/api/post-clesson-results/"
+        requests.post(url, json={"clessonId": self.aid,
+                                 "sk": self.data["config"]["sk"]},
+                      cookies=self.cookies)
+        return self._load_data()
+
     def _load_cookies_if_necessary(self):
-        if self.cookies and len(self.cookies)>0:
-            return Status.OK
-        return self._load_cookies()
+        return Status.OK if self.cookies else self._load_cookies()
 
 
 def print_table(s):
-    print(s)
     if "|" not in s:
         print(s)
         return
-    lines = s.strip().split('\n')
     rows = []
-    for line in lines:
-        if line.startswith('|`print'):
-            parts = [p.strip(' `') for p in line.split('|')[1:-1]]
-            rows.append(parts)
+    for line in s.strip().split('\n'):
+        if "|" in line:
+            parts = [p.strip(' `') for p in line.split('|') if
+                     p.strip()]
+            if parts: rows.append(parts)
+    if not rows:
+        print(s)
+        return
 
-    # Находим максимальные ширины колонок
-    max_widths = [0, 0]
-    for row in rows:
-        max_widths[0] = max(max_widths[0], len(row[0]))
-        max_widths[1] = max(max_widths[1], len(row[1]))
-
-    # Вывод таблицы
-    print('┌' + '─' * (max_widths[0] + 2) + '┬' + '─' * (
-            max_widths[1] + 2) + '┐')
-    for row in rows:
-        print(
-            f'│ {row[0].ljust(max_widths[0])} │ {row[1].ljust(max_widths[1])} │')
-        if row != rows[-1]:
-            print('├' + '─' * (max_widths[0] + 2) + '┼' + '─' * (
-                    max_widths[1] + 2) + '┤')
-    print('└' + '─' * (max_widths[0] + 2) + '┴' + '─' * (
-            max_widths[1] + 2) + '┘')
+    widths = [max(len(row[i]) for row in rows) for i in
+              range(len(rows[0]))]
+    sep = '┼'.join('─' * (w + 2) for w in widths)
+    print('┌' + '┬'.join('─' * (w + 2) for w in widths) + '┐')
+    for i, row in enumerate(rows):
+        print('│ ' + ' │ '.join(val.ljust(widths[j]) for j, val in
+                                enumerate(row)) + ' │')
+        if i < len(rows) - 1: print('├' + sep + '┤')
+    print('└' + '┴'.join('─' * (w + 2) for w in widths) + '┘')
 
 
 def print_marker_solution(s: Solver, i: int):
     st, an = s.marker_solution(i)
-    if st != Status.OK:
+    if st == Status.OK:
+        for aa in an: print_table(aa)
+    else:
         print(f"Error: {st.name}")
-        return
-    for aa in an:
-        print_table(aa)
 
 
 def print_coding_solution(s: Solver, i: int):
@@ -379,103 +413,60 @@ def print_coding_solution(s: Solver, i: int):
     if st != Status.OK:
         print(f"Error: {st.name}")
         return
-    print(sol)
-    if input("Remove comments? (y/n) ").lower() == "y":
-        sol=remove_comments(sol)
-        print(sol)
-    if input("Submit auto-solution? (y/n) ").lower() == "y":
-        fake_td = int(input("Enter fake time delta (in seconds): "))
-        s.submit_coding_solution(sol, prid, fake_td)
+    print(f"\n--- AUTHOR SOLUTION ---\n{sol}\n--- END ---")
+    if input("Submit this solution? (y/n): ").lower() == "y":
+        td = int(input("Time delta (sec): ") or "30")
+        print("Status:", s.submit_coding_solution(sol, prid, td))
 
-def remove_comments(sol):
-    is_multiline_comment=False
-    is_start=True
-    res=[]
-    for l in sol.splitlines():
-        line=l.strip()
-        if len(line)==0:
-            continue
-        if line.startswith("#"):
-            continue
-        if  is_multiline_comment:
-            if line.startswith("'''"):
-                is_multiline_comment=False
-            continue
-        if "'''" in line and is_start:
-            is_multiline_comment=True
-            continue
-        is_start=False
-        res.append(l)
-    return  "\n".join(res)
+
 def print_problem(s: Solver, i: int):
     st, t = s.get_problem_type(i)
-    print(f"{'-' * 25}Problem {i}{'-' * 25}")
+    print(f"\n{'=' * 20} Problem {i} ({t}) {'=' * 20}")
     if st != Status.OK:
         print(f"Error: {st.name}")
-        return
-    if t == "theory":
-        print("Theory problem. No answer required.")
+    elif t == "theory":
+        print("Theory block (No answer).")
     elif t == "practice":
         print_marker_solution(s, i)
     elif t == "coding":
         print_coding_solution(s, i)
-    else:
-        print(f"Unknown problem type: {t}")
-
-
-def print_all_problems(s: Solver):
-    for i, problem in enumerate(s.get_problems(), start=1):
-        try:
-            print_problem(s, i)
-        except Exception as e:
-            print(f"FAILED to loag task {i}:")
-            print(e)
-            traceback.print_exc()
 
 
 def load_ids():
-    a=input("Enter course id OR link to assignment: ")
-    if a.startswith("https://"):
-        cid=a[a.find("courses/")+len("courses/"):a.find("/assignments")]
-        aid=a[a.find("assignments/")+len("assignments/"):a.find("/run")]
-        if not cid.isdigit() or not aid.isdigit():
-            return Status.WRONG_INPUT, None, None
-        print(f"Your course ID: {cid}, assignment ID: {aid}")
+    a = input("Enter course link or ID: ")
+    if "education.yandex.ru" in a:
+        cid = re.search(r'courses/(\d+)', a).group(1)
+        aid = re.search(r'assignments/(\d+)', a).group(1)
         return Status.OK, cid, aid
-    elif a.isdigit():
-        aid=input("Enter assignment ID: ")
-        if not aid.isdigit():
-            return Status.WRONG_INPUT, None, None
-        return Status.OK, a, aid
-    return Status.WRONG_INPUT, None, None
+    return Status.OK, a, input("Enter assignment ID: ")
+
+
 def main():
-    cookies_path = input(
-        "Enter cookies path (or blank to use default) OR '*' to login with credentials: ")
-    uname=None
-    sch_code=None
-    cookies_path = cookies_path if cookies_path else "cookies.txt"
-    if cookies_path=="*":
-        uname=input("Enter your login: ")
-        sch_code=input("Enter your school code: ")
-        if not sch_code.isdigit() or not sch_code or not uname:
-            print("Error: Incorrect credentials format!")
-            exit(1)
+    path = input(
+        "Cookies path (blank for cookies.txt) or '*' for login: ")
+    creds = None
+    if path == "*":
+        creds = {"login": input("Login: "),
+                 "code": input("School Code: ")}
+        path = "cookies.txt"
+
     st, cid, aid = load_ids()
-    if st!=Status.OK:
-        print(f"Error: {st.name}")
-        exit(1)
-    solver = Solver(cid, aid, cookies_path, {"login": uname, "code": sch_code})
-    st, name=solver.get_name()
-    if st!=Status.OK:
-        print(f"Auth error: {st.name}")
-        exit(1)
-    print(f"Logged in as: {name}")
-    problem_idx = input("Enter problem number or * to show all: ").strip()
-    if problem_idx == "*":
-        print_all_problems(solver)
-    elif problem_idx.isdigit():
-        print_problem(solver, int(problem_idx))
+    solver = Solver(cid, aid, path or "cookies.txt", creds)
+
+    st, name = solver.get_name()
+    if st != Status.OK:
+        print("Auth failed.")
+        return
+    print(f"User: {name}")
+
+    cmd = input("Problem number or '*' for all: ")
+    if cmd == "*":
+        for i in range(1,
+                       len(solver.get_problems()) + 1): print_problem(
+            solver, i)
     else:
-        print("Invalid problem number. Please enter integer or *")
+        print_problem(solver, int(cmd))
+
+
 if __name__ == "__main__":
     main()
