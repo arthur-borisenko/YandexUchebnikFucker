@@ -237,7 +237,7 @@ class Solver:
             "clessonId": self.cid, "problemLinkId": prid,
             "resultId": clr_id,
             "answered": True, "completed": True,
-            "answer": json.dumps(sol),
+            "answer": json.dumps(sol).replace("\"", "\'"),
             "sk": self.data["config"]["sk"]
         }
         resp = requests.post(
