@@ -1,9 +1,11 @@
 import builtins
 import os, re
+import sys
 import traceback
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
-
+print(os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
+ENABLE_BETA_FEATURES = os.getenv("YUF_ENABLE_BETA_FEATURES", "0") == "1"
 try:
     import requests
 except ImportError:
@@ -29,7 +31,9 @@ class Status(Enum):
     WRONG_PROBLEM_TYPE = 6
     WRONG_INPUT = 7
     COOKIES_GENERATE_ERROR = 8
-    UNKNOWN_ERROR = 9
+    SOLUTION_FAILURE_WRONG_ANSWER=9
+    SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE=10
+    UNKNOWN_ERROR = 11
 
 
 class Solver:
@@ -198,7 +202,7 @@ class Solver:
         except:
             return Status.UNKNOWN_ERROR, "ERROR"
 
-    def _pre_send_coding_solution(self, lpl_id, fake_timedelta=0):
+    def _post_fake_timedelta(self, lpl_id, fake_timedelta=0):
         clr_id = self.data["data"]["getLatestCLessonResult"]["id"]
         spent_time_json = {"link_id": lpl_id,
                            "time_delta": fake_timedelta,
@@ -214,7 +218,7 @@ class Solver:
 
     def submit_coding_solution(self, sol, prid, fake_timedelta=0):
         self.load_data_if_necessary()
-        self._pre_send_coding_solution(prid, fake_timedelta)
+        self._post_fake_timedelta(prid, fake_timedelta)
         return self._send_coding_solution(prid, sol)
 
     def get_problem_type(self, problem_idx):
@@ -231,21 +235,39 @@ class Solver:
                 v["mistakes"] > 0]
         return len(mist) > 0, mist
 
+    def clean_markup(self, text):
+        # Очистка текста от тегов типа {sizedText:small}
+        return re.sub(
+            r'\\?\{sizedText:.*?\}|\\?\{\\\\sizedText\}', '',
+            str(text)).replace("\xa0", "")
+    def _extract_text(self, problem):
+        if problem["problem"]["type"]=="coding": return Status.WRONG_PROBLEM_TYPE, ""
+        res=[]
+        lyt=problem["problem"]["markup"]["layout"]
+        for el in lyt:
+            if el["kind"]=="text":
+                res.append(el["content"]["text"])
+        return Status.OK, self.clean_markup("\n".join(res))
+    def extract_text(self, idx):
+        problem=self.data["data"]["getCLessonRun"]["problems"][idx-1]
+        return self._extract_text(problem)
+
     def _send_marker_solution(self, sol, prid):
         clr_id = self.data["data"]["getLatestCLessonResult"]["id"]
         data = {
             "clessonId": self.cid, "problemLinkId": prid,
             "resultId": clr_id,
             "answered": True, "completed": True,
-            "answer": json.dumps(sol).replace("\"", "\'"),
+            "answer": sol,
             "sk": self.data["config"]["sk"]
         }
         resp = requests.post(
             "https://education.yandex.ru/classroom/api/patch-clesson-results/",
             cookies=self.cookies, json=data)
         if resp.status_code // 100 != 2: print(f"status code: {resp.status_code}, data: {resp.text}");return Status.UNKNOWN_ERROR, False
-        return Status.OK, self._check_marker_solution(resp.json(),
-                                                      prid)
+        was_mist, mist = self._check_marker_solution(resp.json(),
+                                    prid)
+        return Status.OK if not was_mist else Status.SOLUTION_FAILURE_WRONG_ANSWER, (was_mist, mist), resp.text
 
     def _prepare_marker_solution(self, answers, problem):
         # 1. Собираем маппинг ID маркера -> Тип маркера
@@ -264,20 +286,38 @@ class Solver:
                     inner_payload[str(inp_id)] = val[
                         0] if isinstance(val, list) else val
                 res[str(mid)] = {"user_answer": inner_payload}
+            elif m_type == "choice":
+                res[str(mid)] = {"user_answer": ans_data}
+            elif m_type == "chooseimage":
+                inner_payload = ans_data[0]
+                res[str(mid)] = {"user_answer": inner_payload}
+                #return Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE, False # mock
+            elif m_type == "dragimage":
+                inner_payload = ans_data
+                res[str(mid)] = {"user_answer": inner_payload}
+            elif m_type=="highlight":
+                inner_payload = ans_data[0]
+                res[str(mid)] = {"user_answer": inner_payload}
             else:
+                return Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE, False
                 res[str(mid)] = ans_data
-        return res
+        return Status.OK, res
 
     def _pre_send_marker_solution(self, lpl_id, fake_timedelta=0):
-        return self._pre_send_coding_solution(lpl_id, fake_timedelta)
-
+        return self._post_fake_timedelta(lpl_id, fake_timedelta)
+    # DANGER - untested
     def send_marker_solution(self, problem_idx, fake_timedelta=0):
         status, problem, answers, prid = self._marker_solution(
             problem_idx)
         if status != Status.OK: return status
-        prepared = self._prepare_marker_solution(answers, problem)
+        st, prepared = self._prepare_marker_solution(answers, problem)
+        if st==Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE:
+            return Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE, ([-1], True)
+        dt=json.dumps(prepared, separators=(",", ":"))
+        print(dt)
+        #return Status.UNKNOWN_ERROR, -1, []
         self._pre_send_marker_solution(prid, fake_timedelta)
-        return self._send_marker_solution(prepared, prid)
+        return self._send_marker_solution(dt, prid)
 
     def _marker_solution(self, problem_idx):
         self.load_data_if_necessary()
@@ -302,11 +342,6 @@ class Solver:
                 r'\\?\{sizedText:.*?\}|\\?\{\\\\sizedText\}', '',
                 str(text))
 
-        if input(
-                f"Submit solution for {problem_idx}? (y/n): ").lower() in {
-            "y", "yes", "1", "д", "да"}:
-            print("Response:",
-                  self.send_marker_solution(problem_idx, 60))
 
         readable_answers = []
         for el in problem["markup"]["layout"]:
@@ -404,6 +439,13 @@ def print_marker_solution(s: Solver, i: int):
     st, an = s.marker_solution(i)
     if st == Status.OK:
         for aa in an: print_table(aa)
+        if ENABLE_BETA_FEATURES and input(
+                f"Submit solution for {i}? (y/n): ").lower() in {
+            "y", "yes", "1", "д", "да"}:
+            st, (was_mist, mist), dt=s.send_marker_solution(i, 60)
+            print(f"Solution status: {st}, Response: {dt}")
+            if was_mist: print(f"SOLVED WITH MISTAKES! Mistakes: {mist}", file=sys.stderr)
+
     else:
         print(f"Error: {st.name}")
 
@@ -425,8 +467,9 @@ def print_problem(s: Solver, i: int):
     if st != Status.OK:
         print(f"Error: {st.name}")
     elif t == "theory":
-        print("Theory block (No answer).")
+        print(s.extract_text(i))
     elif t == "practice":
+        print(s.extract_text(i))
         print_marker_solution(s, i)
     elif t == "coding":
         print_coding_solution(s, i)

@@ -6,11 +6,11 @@
 
 ### Solution:
 
-| Feature\Problem type | Theory           | Coding                                             | answer select       | answer enter      | miscellaneous)                                                                  | Link to yandex disc       |
-|----------------------|------------------|----------------------------------------------------|---------------------|-------------------|---------------------------------------------------------------------------------|---------------------------|
-| Get solution         | ⛔ Not applicable | ✅ full support                                     | ✅ full support      | ✅ full support    | ⚠️     avaliable, but raw(internal) data without formatting; may lead to errors | ⛔ Not planned; impossible |
-| Auto-send solution   | ⛔ Not applicable | ✅ full support; supports comment removal from code | ️❌ work in progress | ❌work in progress | ❌work in progress                                                               | ⛔ Not planned; impossible |
-| Fake time            | ⛔ Not applicable | ✅ full support                                     | ⛔ Not applicable    | ⛔ Not applicable  | ⛔ Not applicable                                                                | ⛔ Not applicable          |
+| Feature\Problem type | Theory           | Coding                                             | answer select                | answer enter        | miscellaneous                                                                   | Link to yandex disc       |
+|----------------------|------------------|----------------------------------------------------|------------------------------|---------------------|---------------------------------------------------------------------------------|---------------------------|
+| Get solution         | ⛔ Not applicable | ✅ full support                                     | ✅ full support              | ✅ full support     | ⚠️     avaliable, but raw(internal) data without formatting; may lead to errors | ⛔ Not planned; impossible |
+| Auto-send solution   | ⛔ Not applicable | ✅ full support; supports comment removal from code | ️✅ full support(beta, v225+) | ✅ full support(beta, v225+) | ✅ partial support(supported: dragimage, chooseimage, highlight)(beta, v225+)   | ⛔ Not planned; impossible |
+| Fake time            | ⛔ Not applicable | ✅ full support                                     | ✅ full support              | ✅ full support     | ✅ full support                                                               | ⛔ Not applicable          |
 
 ### Other
 
