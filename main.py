@@ -4,8 +4,8 @@ import sys
 import traceback
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
-print(os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
-ENABLE_BETA_FEATURES = os.getenv("YUF_ENABLE_BETA_FEATURES", "0") == "1"
+print("Beta enabled status:", os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
+ENABLE_BETA_FEATURES = os.getenv("YUF_ENABLE_BETA_FEATURES", "1") == "1"
 try:
     import requests
 except ImportError:
