@@ -1,7 +1,7 @@
 import builtins
 import os, re
 import sys
-import traceback
+import traceback, random
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
 print("Beta enabled status:", os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
@@ -442,7 +442,7 @@ def print_marker_solution(s: Solver, i: int):
         if ENABLE_BETA_FEATURES and input(
                 f"Submit solution for {i}? (y/n): ").lower() in {
             "y", "yes", "1", "д", "да"}:
-            st, (was_mist, mist), dt=s.send_marker_solution(i, 60)
+            st, (was_mist, mist), dt=s.send_marker_solution(i, random.randint(60, 150))
             print(f"Solution status: {st}, Response: {dt}")
             if was_mist: print(f"SOLVED WITH MISTAKES! Mistakes: {mist}", file=sys.stderr)
 
