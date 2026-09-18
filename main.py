@@ -4,6 +4,9 @@ import sys
 import traceback, random
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
+from itertools import count
+from socketserver import DatagramRequestHandler
+
 print("Beta enabled status:", os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
 ENABLE_BETA_FEATURES = os.getenv("YUF_ENABLE_BETA_FEATURES", "1") == "1"
 try:
@@ -125,7 +128,9 @@ class Solver:
             print(f"Error loading cookies: {e}")
             return Status.COOKIES_PARSE_ERROR
 
-    def _load_data(self):
+    def _load_data(self, lives=2):
+        if lives == 0:
+            return Status.UNKNOWN_ERROR
         status = self._load_cookies_if_necessary()
         if status != Status.OK:
             return status
@@ -146,13 +151,44 @@ class Solver:
         datatxt = datatxt[:datatxt.find("</script>")]
         try:
             self.data = json.loads(datatxt)
+            if "getCLessonRun" not in self.data["data"] and self.aid:
+                print("CLessonRun not found in data, attempting to start CLesson.")
+                self.start_clesson()
+                self._load_data(lives-1)
             return Status.OK
         except Exception as e:
             print(f"Error parsing JSON: {e}")
             return Status.UNKNOWN_ERROR
+    def get_courses(self):
+        resp=requests.get("https://education.yandex.ru/classroom/api/get-assigned-courses/", cookies=self.cookies)
+        if resp.status_code // 100 != 2:
+            print("Failed to get courses:", resp.text)
+            return Status.UNKNOWN_ERROR, None
+        data=resp.json()
+        courses_debloated=[]
+        for course in data["courses"]:
+            cid=course["id"]
+            has_tasks=course["count_of_new_clessons"]>0
+            name=course["name"]
+            count_of_tasks=course["count_of_new_clessons"]
+            courses_debloated.append({"id": cid, "name": name, "cnt": count_of_tasks, "ht": has_tasks})
+        return Status.OK, courses_debloated
+    def get_lessons(self, cid):
+        resp=requests.get("https://education.yandex.ru/classroom/api/get-course-student-lessons/15834836/?list_type=active&page_size=100", cookies=self.cookies)
+        if resp.status_code // 100 != 2:
+            print("Failed to get lessons:", resp.text)
+            return Status.UNKNOWN_ERROR, None
+        data=resp.json()
+        lessons_debloated=[]
+        for lesson in data["clessons"]:
+            lid=lesson["id"]
+            name=lesson["lesson"]["name"]
+            problems_cnt=lesson["assigned_problems"]
+            lessons_debloated.append({"id": lid, "name": name, "problems": problems_cnt})
+        return Status.OK, lessons_debloated
 
     def load_data_if_necessary(self):
-        if self.data is None or len(self.data) == 0:
+        if self.data is None or len(self.data) == 0 or "getCLessonRun" not in self.data["data"]:
             return self._load_data()
         return Status.OK
 
@@ -401,10 +437,10 @@ class Solver:
 
     def start_clesson(self):
         url = "https://education.yandex.ru/classroom/api/post-clesson-results/"
-        requests.post(url, json={"clessonId": self.aid,
+        resp = requests.post(url, json={"clessonId": self.aid,
                                  "sk": self.data["config"]["sk"]},
                       cookies=self.cookies)
-        return self._load_data()
+        return Status.OK if resp.status_code % 100 == 2 else Status.UNKNOWN_ERROR
 
     def _load_cookies_if_necessary(self):
         return Status.OK if self.cookies else self._load_cookies()
@@ -475,15 +511,60 @@ def print_problem(s: Solver, i: int):
         print_coding_solution(s, i)
 
 
-def load_ids():
-    a = input("Enter course link or ID: ")
+def load_ids_fallback(cid):
+    a="foo"
+    while not "education.yandex.ru" in a and not a.isdigit():
+        a = input(f"Enter {'course' if cid is not None else 'assignment'} ID or task link: ")
+        if not "education.yandex.ru" in a and not a.isdigit():
+            print("Must be yandex uchebnik link or integer")
+    if cid is None:
+        cid=a
+        aid="foo"
+        while not aid.isdigit():
+            aid=input("Enter assignment ID: ")
+            if not aid.isdigit():
+                print("Must be integer")
+    else:
+        aid=a
     if "education.yandex.ru" in a:
         cid = re.search(r'courses/(\d+)', a).group(1)
         aid = re.search(r'assignments/(\d+)', a).group(1)
-        return Status.OK, cid, aid
-    return Status.OK, a, input("Enter assignment ID: ")
-
-
+    return Status.OK, cid, aid
+def ask_course_and_assignment(solver: Solver):
+    st, courses = solver.get_courses()
+    if st != Status.OK:
+        return st, None, None
+    print(f"Select course:")
+    for i, c in enumerate(courses):
+        print(f"{i+1}:", "; ".join(map(lambda x: "=".join(map(str, x)), c.items())))
+    n=-1
+    valid=False
+    while not valid:
+        n=int(input(f"Enter course number(1-{len(courses)}): "))
+        if n>len(courses):
+            print(f"Course number out of range({n} > {len(courses)}).")
+        elif n<1:
+            print("Course number out of range(must be at least 1).")
+        else:
+            valid=True
+    cid=courses[n-1]["id"]
+    st, assignments=solver.get_lessons(cid)
+    if st != Status.OK:
+        return st, cid, None
+    print(f"Select assignment:")
+    for i, a in enumerate(assignments):
+        print(f"{i + 1}:", "; ".join(map(lambda x: "=".join(map(str, x)), a.items())))
+    n=-1
+    valid=False
+    while not valid:
+        n=int(input(f"Enter assignment number(1-{len(assignments)}): "))
+        if n>len(assignments):
+            print(f"Assignment number out of range({n} > {len(assignments)}).")
+        elif n<1:
+            print("Assignment number out of range(must be at least 1).")
+        else:
+            valid=True
+    return st, cid, assignments[n-1]["id"]
 def main():
     path = input(
         "Cookies path (blank for cookies.txt) or '*' for login: ")
@@ -493,15 +574,19 @@ def main():
                  "code": input("School Code: ")}
         path = "cookies.txt"
 
-    st, cid, aid = load_ids()
-    solver = Solver(cid, aid, path or "cookies.txt", creds)
-
+    solver = Solver(None, None, path or "cookies.txt", creds)
     st, name = solver.get_name()
     if st != Status.OK:
         print("Auth failed.")
         return
     print(f"User: {name}")
-
+    st, cid, aid = ask_course_and_assignment(solver)
+    if st != Status.OK:
+        print(f"Error: {st.name}")
+        print("Falling back to manual selection.")
+        st, cid, aid = load_ids_fallback(cid)
+    solver.cid = cid
+    solver.aid = aid
     cmd = input("Problem number or '*' for all: ")
     if cmd == "*":
         for i in range(1,
