@@ -36,7 +36,8 @@ class Status(Enum):
     COOKIES_GENERATE_ERROR = 8
     SOLUTION_FAILURE_WRONG_ANSWER=9
     SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE=10
-    UNKNOWN_ERROR = 11
+    SOLUTION_FAILURE_ALREADY_SOLVED_OR_NO_ATTEMPTS=11
+    UNKNOWN_ERROR = 12
 
 
 class Solver:
@@ -129,7 +130,8 @@ class Solver:
             return Status.COOKIES_PARSE_ERROR
 
     def _load_data(self, lives=2):
-        if lives == 0:
+        if lives <= 0:
+            print("Max retries exceeded!")
             return Status.UNKNOWN_ERROR
         status = self._load_cookies_if_necessary()
         if status != Status.OK:
@@ -151,8 +153,8 @@ class Solver:
         datatxt = datatxt[:datatxt.find("</script>")]
         try:
             self.data = json.loads(datatxt)
-            if "getCLessonRun" not in self.data["data"] and self.aid:
-                print("CLessonRun not found in data, attempting to start CLesson.")
+            if ("getCLessonRun" not in self.data["data"] or "getLatestCLessonResult" not in self.data["data"] or ("id" not in self.data["data"]["getLatestCLessonResult"])) and self.aid:
+                print("CLessonRun or CLessonResult not found in data, attempting to start CLesson.")
                 self.start_clesson()
                 self._load_data(lives-1)
             return Status.OK
@@ -188,7 +190,7 @@ class Solver:
         return Status.OK, lessons_debloated
 
     def load_data_if_necessary(self):
-        if self.data is None or len(self.data) == 0 or "getCLessonRun" not in self.data["data"]:
+        if self.data is None or len(self.data) == 0 or "getCLessonRun" not in self.data["data"] or "getLatestCLessonResult" not in self.data["data"] or "id" not in self.data["data"]["getLatestCLessonResult"]:
             return self._load_data()
         return Status.OK
 
@@ -300,7 +302,15 @@ class Solver:
         resp = requests.post(
             "https://education.yandex.ru/classroom/api/patch-clesson-results/",
             cookies=self.cookies, json=data)
-        if resp.status_code // 100 != 2: print(f"status code: {resp.status_code}, data: {resp.text}");return Status.UNKNOWN_ERROR, False
+        if resp.status_code // 100 != 2:
+            print(f"status code: {resp.status_code}, data: {resp.text}");
+            try:
+                data1=resp.json()
+                if len(data1.get("errors", [])) > 0 and "attempt limit" in data1.get("errors", [])[0].get("message"):
+                    return Status.SOLUTION_FAILURE_ALREADY_SOLVED_OR_NO_ATTEMPTS, (False, []), resp.text
+            except Exception as e:
+                Status.UNKNOWN_ERROR, (True, [-1]), False
+            return Status.UNKNOWN_ERROR, (True, [-1]), False
         was_mist, mist = self._check_marker_solution(resp.json(),
                                     prid)
         return Status.OK if not was_mist else Status.SOLUTION_FAILURE_WRONG_ANSWER, (was_mist, mist), resp.text
@@ -345,10 +355,10 @@ class Solver:
     def send_marker_solution(self, problem_idx, fake_timedelta=0):
         status, problem, answers, prid = self._marker_solution(
             problem_idx)
-        if status != Status.OK: return status
+        if status != Status.OK: return status, ([-1], True), ""
         st, prepared = self._prepare_marker_solution(answers, problem)
         if st==Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE:
-            return Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE, ([-1], True)
+            return Status.SOLUTION_FAILURE_UNKNOWN_PROBLEM_TYPE, ([-1], True), ""
         dt=json.dumps(prepared, separators=(",", ":"))
         print(dt)
         #return Status.UNKNOWN_ERROR, -1, []
@@ -366,6 +376,28 @@ class Solver:
             "type"] != "practice": return Status.WRONG_PROBLEM_TYPE, None, None, None
         return Status.OK, problem, problem["markup"]["answers"], \
         problems[idx]["id"]
+    def send_theory_solution(self, problem_idx, fake_timedelta=10):
+        self.load_data_if_necessary()
+        problems = self.data["data"]["getCLessonRun"]["problems"]
+        idx = int(problem_idx) - 1
+        if idx >= len(
+            problems): return Status.PROBLEM_NOT_FOUND, None, None, None
+        problem = problems[idx]["problem"]
+        if problem[
+            "type"] != "theory": return Status.WRONG_PROBLEM_TYPE, None, None, None
+        clr_id = self.data["data"]["getLatestCLessonResult"]["id"]
+        data = {
+            "clessonId": self.cid, "problemLinkId": problems[idx]["id"],
+            "resultId": clr_id,
+            "answered": True, "completed": True,
+            "answer": "{}",
+            "sk": self.data["config"]["sk"]
+        }
+        resp = requests.post(
+            "https://education.yandex.ru/classroom/api/patch-clesson-results/",
+            cookies=self.cookies, json=data)
+        if resp.status_code // 100 != 2: print(f"status code: {resp.status_code}, data: {resp.text}");return Status.UNKNOWN_ERROR, False
+        return Status.OK
 
     def marker_solution(self, problem_idx):
         status, problem, answers, prid = self._marker_solution(
@@ -471,44 +503,51 @@ def print_table(s):
     print('└' + '┴'.join('─' * (w + 2) for w in widths) + '┘')
 
 
-def print_marker_solution(s: Solver, i: int):
+def print_marker_solution(s: Solver, i: int, send_by_default=False):
     st, an = s.marker_solution(i)
     if st == Status.OK:
         for aa in an: print_table(aa)
-        if ENABLE_BETA_FEATURES and input(
+        if ENABLE_BETA_FEATURES and send_by_default or input(
                 f"Submit solution for {i}? (y/n): ").lower() in {
             "y", "yes", "1", "д", "да"}:
-            st, (was_mist, mist), dt=s.send_marker_solution(i, random.randint(60, 150))
+            a=s.send_marker_solution(i, random.randint(60, 150))
+            st, (was_mist, mist), dt=a
             print(f"Solution status: {st}, Response: {dt}")
-            if was_mist: print(f"SOLVED WITH MISTAKES! Mistakes: {mist}", file=sys.stderr)
+            if st == Status.SOLUTION_FAILURE_ALREADY_SOLVED_OR_NO_ATTEMPTS:
+                print("Failed to send solution. Problem may be already solved or all attempts exhausted.", file=sys.stderr)
+            elif was_mist and mist[0]!=-1: print(f"SOLVED WITH MISTAKES! Mistakes: {mist}", file=sys.stderr)
+            elif was_mist:
+                print("FAILED TO SOLVE: REQUEST ERROR!", file=sys.stderr)
 
     else:
         print(f"Error: {st.name}")
 
 
-def print_coding_solution(s: Solver, i: int):
+def print_coding_solution(s: Solver, i: int, send_by_default=False):
     st, sol, prid = s.coding_solution(i)
     if st != Status.OK:
         print(f"Error: {st.name}")
         return
     print(f"\n--- AUTHOR SOLUTION ---\n{sol}\n--- END ---")
-    if input("Submit this solution? (y/n): ").lower() == "y":
+    if send_by_default or input("Submit this solution? (y/n): ").lower() == "y":
         td = int(input("Time delta (sec): ") or "30")
         print("Status:", s.submit_coding_solution(sol, prid, td))
 
 
-def print_problem(s: Solver, i: int):
+def print_problem(s: Solver, i: int, send_by_default=False):
     st, t = s.get_problem_type(i)
     print(f"\n{'=' * 20} Problem {i} ({t}) {'=' * 20}")
     if st != Status.OK:
         print(f"Error: {st.name}")
     elif t == "theory":
         print(s.extract_text(i))
+        print("Marking as complete....")
+        s.send_theory_solution(i, random.randint(1, 10))
     elif t == "practice":
         print(s.extract_text(i))
-        print_marker_solution(s, i)
+        print_marker_solution(s, i, send_by_default)
     elif t == "coding":
-        print_coding_solution(s, i)
+        print_coding_solution(s, i, send_by_default)
 
 
 def load_ids_fallback(cid):
@@ -589,12 +628,13 @@ def main():
     solver.aid = aid
     cmd = input("Problem number or '*' for all: ")
     if cmd == "*":
+        send_by_default = input("Send problems by default? (y/n): ").lower().strip() in {"y", "yes", "д", "да"}
         for i in range(1,
                        len(solver.get_problems()) + 1): print_problem(
-            solver, i)
+            solver, i, send_by_default)
     else:
         print_problem(solver, int(cmd))
-
+    print("Done.")
 
 if __name__ == "__main__":
     main()
