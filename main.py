@@ -5,7 +5,7 @@ import traceback, random
 from enum import Enum
 from http.cookiejar import MozillaCookieJar
 from itertools import count
-from socketserver import DatagramRequestHandler
+
 
 print("Beta enabled status:", os.getenv("YUF_ENABLE_BETA_FEATURES", "1"))
 ENABLE_BETA_FEATURES = os.getenv("YUF_ENABLE_BETA_FEATURES", "1") == "1"
