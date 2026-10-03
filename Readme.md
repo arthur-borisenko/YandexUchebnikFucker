@@ -6,11 +6,11 @@
 
 ### Solution:
 
-| Feature\Problem type | Theory                            | Coding                                              | answer select   | answer enter    | miscellaneous                            | Web               | Link to yandex disc        |
-|----------------------|-----------------------------------|-----------------------------------------------------|-----------------|-----------------|------------------------------------------|-------------------|----------------------------|
-| Get solution         | ⛔ Not applicable                 | ✅ full support                                     | ✅ full support | ✅ full support | ⚠ avaliable, but display is not so good | ❌ in development | ⛔ Not planned; impossible |
-| Auto-send solution   | ✅ full support(mark as complete) | ✅ full support; supports comment removal from code | ✅ full support | ✅ full support | ✅ partial support(supported most types) | ❌ in development | ⛔ Not planned; impossible |
-| Fake time            | ✅ full support                   | ✅ full support                                     | ✅ full support | ✅ full support | ✅ full support                          | ❌ in development | ⛔ Not applicable          |
+| Feature\Problem type | Theory                            | Coding                                              | answer select   | answer enter    | miscellaneous                            | Web             | Link to yandex disc        |
+|----------------------|-----------------------------------|-----------------------------------------------------|-----------------|-----------------|------------------------------------------|-----------------|----------------------------|
+| Get solution         | ⛔ Not applicable                 | ✅ full support                                     | ✅ full support | ✅ full support | ⚠ avaliable, but display is not so good | ✅ full support | ⛔ Not planned; impossible |
+| Auto-send solution   | ✅ full support(mark as complete) | ✅ full support; supports comment removal from code | ✅ full support | ✅ full support | ✅ partial support(supported most types) | ✅ full support | ⛔ Not planned; impossible |
+| Fake time            | ✅ full support                   | ✅ full support                                     | ✅ full support | ✅ full support | ✅ full support                          | ✅ full support | ⛔ Not applicable          |
 
 ### Other
 
