@@ -6,26 +6,29 @@
 
 ### Solution:
 
-| Feature\Problem type | Theory           | Coding                                             | answer select                | answer enter        | miscellaneous                                                                   | Link to yandex disc       |
-|----------------------|------------------|----------------------------------------------------|------------------------------|---------------------|---------------------------------------------------------------------------------|---------------------------|
-| Get solution         | ⛔ Not applicable | ✅ full support                                     | ✅ full support              | ✅ full support     | ⚠️     avaliable, but raw(internal) data without formatting; may lead to errors | ⛔ Not planned; impossible |
-| Auto-send solution   | ⛔ Not applicable | ✅ full support; supports comment removal from code | ️✅ full support(beta, v225+) | ✅ full support(beta, v225+) | ✅ partial support(supported: dragimage, chooseimage, highlight)(beta, v225+)   | ⛔ Not planned; impossible |
-| Fake time            | ⛔ Not applicable | ✅ full support                                     | ✅ full support              | ✅ full support     | ✅ full support                                                               | ⛔ Not applicable          |
+| Feature\Problem type | Theory                            | Coding                                              | answer select   | answer enter    | miscellaneous                            | Web             | Link to yandex disc        |
+|----------------------|-----------------------------------|-----------------------------------------------------|-----------------|-----------------|------------------------------------------|-----------------|----------------------------|
+| Get solution         | ⛔ Not applicable                 | ✅ full support                                     | ✅ full support | ✅ full support | ⚠ avaliable, but display is not so good | ✅ full support | ⛔ Not planned; impossible |
+| Auto-send solution   | ✅ full support(mark as complete) | ✅ full support; supports comment removal from code | ✅ full support | ✅ full support | ✅ partial support(supported most types) | ✅ full support | ⛔ Not planned; impossible |
+| Fake time            | ✅ full support                   | ✅ full support                                     | ✅ full support | ✅ full support | ✅ full support                          | ✅ full support | ⛔ Not applicable          |
 
 ### Other
 
-| Feature                     | Status         |
-|-----------------------------|----------------|
-| Login via cookies           | ✅ full support |
-| Login via login/school code | ✅ full support |
-| List problems from task     | ✅ full support |
-| CLI                         | ✅ full support |
-| GUI                         | ❌ planned      |
-| WebUI                       | ❌ planned      |
-| windows/linux/macos desktop | ✅ full support |
-| android                     | ⚠️ via termux  |
-| IPhone                      | ⛔ Not planned  |
+| Feature                      | Status                        |
+|------------------------------|-------------------------------|
+| Login via cookies            | ⛔ Deprecated; removed in v3. |
+| Login via login/school code  | ✅ full support               |
+| List problems from task      | ✅ full support               |
+| List courses and assignments | ✅ full support               |
+| CLI                          | ✅ full support               |
+| GUI                          | ❌ planned                    |
+| WebUI                        | ❌ planned                    |
+| windows/linux/macos desktop  | ✅ full support               |
+| android                      | ⚠ via termux                 |
+| IPhone                       | ⛔ Not planned                |
+| Online                       | ❌ planned                    |
 ## Setup:
-* **To launch command-line: ```python main.py``` OR run main.py from your IDE any preferred way**
+* **To launch command-line: ```python bundle.py``` OR run bundle.py from your IDE any preferred way**
+* **To launch multi-file(sources) build: ```python ./src/tui.py``` or launch src/tui.py from IDE (in some cases launching from ide will require marking src as sources root)**
 * To launch GUI: **not supported**
 * To launch WebUI server: **not supported**
