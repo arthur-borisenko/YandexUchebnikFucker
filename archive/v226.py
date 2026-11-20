@@ -309,11 +309,11 @@ class Solver:
                 if len(data1.get("errors", [])) > 0 and "attempt limit" in data1.get("errors", [])[0].get("message"):
                     return Status.SOLUTION_FAILURE_ALREADY_SOLVED_OR_NO_ATTEMPTS, (False, []), resp.text
             except Exception as e:
-                Status.UNKNOWN_ERROR, (True, [-1]), False
-            return Status.UNKNOWN_ERROR, (True, [-1]), False
+                return Status.UNKNOWN_ERROR, ([-1], True), False
+            return Status.UNKNOWN_ERROR, ([-1], True), False
         was_mist, mist = self._check_marker_solution(resp.json(),
                                     prid)
-        return Status.OK if not was_mist else Status.SOLUTION_FAILURE_WRONG_ANSWER, (was_mist, mist), resp.text
+        return Status.OK if not was_mist else Status.SOLUTION_FAILURE_WRONG_ANSWER, (mist, was_mist), resp.text
 
     def _prepare_marker_solution(self, answers, problem):
         # 1. Собираем маппинг ID маркера -> Тип маркера
@@ -341,7 +341,7 @@ class Solver:
             elif m_type == "dragimage":
                 inner_payload = ans_data
                 res[str(mid)] = {"user_answer": inner_payload}
-            elif m_type=="highlight":
+            elif m_type=="highlight" or m_type=="macaroni" or m_type=="coloring":
                 inner_payload = ans_data[0]
                 res[str(mid)] = {"user_answer": inner_payload}
             else:
@@ -511,7 +511,7 @@ def print_marker_solution(s: Solver, i: int, send_by_default=False):
                 f"Submit solution for {i}? (y/n): ").lower() in {
             "y", "yes", "1", "д", "да"}:
             a=s.send_marker_solution(i, random.randint(60, 150))
-            st, (was_mist, mist), dt=a
+            st, (mist, was_mist), dt=a
             print(f"Solution status: {st}, Response: {dt}")
             if st == Status.SOLUTION_FAILURE_ALREADY_SOLVED_OR_NO_ATTEMPTS:
                 print("Failed to send solution. Problem may be already solved or all attempts exhausted.", file=sys.stderr)
