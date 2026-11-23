@@ -29,32 +29,25 @@ class YandexUchebnik:
         self.solvers = get_problem_solvers()
         self.session = requests.Session()
         self.new_msgs = []
-        # Текст, который модуль вернул вместе с последним статусом (msg).
-        # Именно его показывает webui (например, текст ответа сервера при
-        # COOKIES_GENERATE_ERROR), а не только имя статуса.
         self.last_msg = ""
 
     def _login(self):
         status, msg = login_with_creds(self.username, self.sch, self.session)
         if status != Status.OK:
-            # Текст ответа сервера (в т.ч. подробности ошибки) не должен теряться
             self.last_msg = str(msg)
             self._add_msg(f"[{status.name}] Ошибка авторизации: {msg}")
         return status
 
     def _add_msg(self, msg: str):
-        """Сообщения самого модуля (их видно в webui/логах)."""
         self.new_msgs.append(msg)
         print(msg)
 
     def _fail(self, status: Status, msg: str) -> Status:
-        """Сохраняет msg (текст ошибки) рядом со статусом и возвращает статус."""
         self.last_msg = str(msg)
         self._add_msg(f"[{status.name}] {msg}")
         return status
 
     def pop_messages(self) -> list[str]:
-        """Забирает и очищает накопленные сообщения модуля."""
         msgs, self.new_msgs = self.new_msgs, []
         return msgs
 
@@ -69,12 +62,6 @@ class YandexUchebnik:
         }
 
     def get_sk(self) -> str:
-        """CSRF/session-ключ (sk).
-
-        Обычно лежит в window._data загруженной страницы; если страниц недоступна
-        (например, гео-блок по IP) — берём со служебных страниц через
-        fetch_sk_from_pages (см. main/util.py).
-        """
         if self.data and (self.data.get("config") or {}).get("sk"):
             return self.data["config"]["sk"]
         sk, _diag, _geo = fetch_sk_from_pages(
@@ -87,13 +74,7 @@ class YandexUchebnik:
         return sk or ""
 
     def _fetch_api_data(self) -> tuple[dict | None, str]:
-        """Собирает данные в формате window._data напрямую из API Учебника.
-
-        Нужно для работы из-за границы: HTML-страницы /kids/ и
-        /classroom/courses/.../run/1/ закрыты гео-блоком, а API-маршруты
-        get-me / get-clesson-run / get-latest-clesson-result открыты и отдают
-        ровно те же данные, что и страница.
-        """
+        """Собирает данные в формате window._data напрямую из API."""
         hdrs = self._headers()
         payload: dict = {
             "basePath": "https://education.yandex.ru",
@@ -118,7 +99,7 @@ class YandexUchebnik:
         if resp.status_code // 100 != 2:
             return (
                 None,
-                f"get-clesson-run/{self.aid} -> HTTP {resp.status_code}: {resp.text[:300]}",
+                f"get-clesson-run/{self.aid} -> HTTP {resp.status_code}: {resp.text}",
             )
         try:
             payload["data"]["getCLessonRun"] = resp.json()
@@ -135,67 +116,23 @@ class YandexUchebnik:
             except Exception:
                 result = {}
         if isinstance(result, dict) and result.get("statusCode") == 404:
-            # результата ещё нет — урок не начат
             result = {}
         payload["data"]["getLatestCLessonResult"] = result
         return payload, ""
 
     def _load_data(self, lives=2) -> Status:
+        """Загрузка данных исключительно через API Маршруты."""
         if lives <= 0:
             return self._fail(Status.UNKNOWN_ERROR, "Max retries exceeded!")
         status = self._load_cookies_if_necessary()
         if status != Status.OK:
             return status
 
-        html_problem = "урок не выбран" if not self.aid else ""
-        captcha_seen = False
-        data = None
-        if self.aid:
-            URL = f"https://education.yandex.ru/classroom/courses/{self.cid}/assignments/{self.aid}/run/1/"
-            request = self.session.get(URL)
-            html = request.text
-            if "captcha" in html:
-                captcha_seen = True
-                html_problem = (
-                    "Яндекс Учебник запросил подтверждение (captcha) на странице урока, "
-                    f"итоговый URL: {request.url}"
-                )
-            elif request.status_code == 404:
-                html_problem = f"Урок не найден (HTTP 404): {URL}"
-            elif request.status_code // 100 != 2:
-                html_problem = (
-                    f"Сервер ответил HTTP {request.status_code}: {html[:300]}"
-                )
-            elif "window._data=" not in html:
-                html_problem = (
-                    "Страница урока не отдала данные (window._data), "
-                    f"итоговый URL: {request.url}"
-                )
-            else:
-                datatxt = html[html.find("window._data=") :][len("window._data=") :]
-                datatxt = datatxt[: datatxt.find("</script>")]
-                try:
-                    data = json.loads(datatxt)
-                except Exception as e:
-                    html_problem = f"Error parsing JSON: {e}"
+        api_data, api_err = self._fetch_api_data()
+        if api_data is None:
+            return self._fail(Status.UNKNOWN_ERROR, api_err)
 
-        if data is None:
-            # Резервный путь: те же данные напрямую через API.
-            # Работает, когда HTML-страницы недоступны (гео-блок, VPN и т.п.).
-            api_data, api_err = self._fetch_api_data()
-            if api_data is None:
-                details = f"{html_problem}\n{api_err}".strip()
-                if captcha_seen:
-                    return self._fail(Status.CAPTCHA_DETECTED, details)
-                return self._fail(Status.UNKNOWN_ERROR, details)
-            if html_problem:
-                self._add_msg(
-                    f"[INFO] HTML-страница недоступна ({html_problem}) — "
-                    "данные получены через API."
-                )
-            data = api_data
-
-        self.data = data
+        self.data = api_data
 
         try:
             if self.aid and (
@@ -204,13 +141,11 @@ class YandexUchebnik:
                 or "id" not in (self.data["data"]["getLatestCLessonResult"] or {})
             ):
                 self._add_msg(
-                    "CLessonRun or CLessonResult not found in data, attempting to start CLesson."
+                    "CLessonRun или CLessonResult не найдены в данных, пробуем запустить урок."
                 )
                 st = self.start_clesson()
                 if st != Status.OK:
-                    return self._fail(
-                        st, "Не удалось начать урок (start_clesson)."
-                    )
+                    return self._fail(st, "Не удалось начать урок (start_clesson).")
                 fresh, err = self._fetch_api_data()
                 if fresh is None:
                     return self._fail(
@@ -223,9 +158,7 @@ class YandexUchebnik:
             return self._fail(Status.UNKNOWN_ERROR, f"Error parsing JSON: {e}")
 
     def get_courses(self) -> tuple[Status, list[dict], str]:
-        resp = self.session.get(
-            "https://education.yandex.ru/classroom/api/get-assigned-courses/"
-        )
+        resp = self.session.get(f"{self.API_BASE}/get-assigned-courses/")
         if resp.status_code // 100 != 2:
             msg = f"Failed to get courses: {resp.text}"
             self._fail(Status.UNKNOWN_ERROR, msg)
@@ -244,7 +177,7 @@ class YandexUchebnik:
 
     def get_lessons(self, cid) -> tuple[Status, list[dict], str]:
         resp = self.session.get(
-            f"https://education.yandex.ru/classroom/api/get-course-student-lessons/{cid}/?list_type=active&page_size=100"
+            f"{self.API_BASE}/get-course-student-lessons/{cid}/?list_type=active&page_size=100"
         )
         if resp.status_code // 100 != 2:
             msg = f"Failed to get lessons: {resp.text}"
@@ -270,7 +203,6 @@ class YandexUchebnik:
         st = self.load_data_if_necessary()
         if st != Status.OK:
             if self.last_msg:
-                # msg уже получен (например, от _login) — не теряем его
                 self._add_msg(
                     f"[{st.name}] Не удалось загрузить данные урока/профиля (getName)."
                 )
@@ -329,7 +261,7 @@ class YandexUchebnik:
         except Exception as e:
             self._add_msg(f"[UNKNOWN_ERROR] Не удалось начать урок: {e}")
             return Status.UNKNOWN_ERROR
-        if resp.status_code % 100 != 2:
+        if resp.status_code // 100 != 2:
             self._add_msg(
                 f"[UNKNOWN_ERROR] Начало урока: HTTP {resp.status_code}: {resp.text[:300]}"
             )
@@ -368,7 +300,7 @@ class YandexUchebnik:
             )
         elif len(self.solvers[problem_type]) > 1:
             print(
-                f'WARNING: multiple solvers support problem type "{problem_type}". Normally this shouldn\'t happen. Defaulting to first detected solver.'
+                f'WARNING: multiple solvers support problem type "{problem_type}". Defaulting to first detected solver.'
             )
         _solver = self.solvers[problem_type][0](
             self.cid, self.aid, self.session, self.data
@@ -383,7 +315,7 @@ class YandexUchebnik:
             return (
                 Status.UNKNOWN_ERROR,
                 p_type,
-                f"{msg}\n_solver is None, but solver find status is OK. This should never happen, but it happened. This is problem with script, not server, account, etc.",
+                f"{msg}\n_solver is None, but solver find status is OK.",
             )
         st, msg1 = _solver.readable_solution(problem_idx)
         return st, p_type, msg + "\n" + msg1
@@ -400,7 +332,7 @@ class YandexUchebnik:
             return (
                 Status.UNKNOWN_ERROR,
                 p_type,
-                f"{msg}\n_solver is None, but solver find status is OK. This should never happen, but it happened. This is problem with script, not server, account, etc.",
+                f"{msg}\n_solver is None, but solver find status is OK.",
             )
         st, msg1 = _solver.send_solution(problem_idx, fake_timedelta)
         return st, p_type, msg + "\n" + msg1

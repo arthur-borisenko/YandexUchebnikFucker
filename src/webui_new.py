@@ -424,7 +424,7 @@ function renderAssignmentsList(assignments){
   });
 }
 async function showAssignments(){
-  const cid=$("statCourse").innerText.replace("Курс:","");
+  const cid=$("statCourse").innerText.replace("Курс: ","");
   if(!cid||cid==="-"){showCourses();return;}
   try{
     const res=await req("/api/select-course","POST",{cid:cid});
