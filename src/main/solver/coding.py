@@ -31,7 +31,7 @@ class CodingProblemSolver(BaseProblemSolver):
         )
         if resp.status_code // 100 != 2:
             return Status.UNKNOWN_ERROR
-        return Status.OK
+        return Status.OK, "Solved successfully!"
 
     def send_solution(self, problem_idx, fake_timedelta=0):
         st, sol = self.coding_solution(problem_idx)
